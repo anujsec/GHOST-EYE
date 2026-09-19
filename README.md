@@ -13,8 +13,10 @@ Give it a domain, and it automatically performs subdomain discovery, HTTP probin
 ### 1. Clone the project
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/recon-framework.git
-cd recon-framework
+git clone https://github.com/anujsec/GOST-EYE.git
+cd GOST-EYE
+cd GOST-EYE-recon-framework
+python recon.py example.com
 ```
 
 ### 2. Install Python dependencies
