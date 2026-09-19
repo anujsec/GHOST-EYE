@@ -56,30 +56,6 @@ every layer collected the maximum possible data for every host, every time.
 | `db.py` batches writes (`executemany` + SQLite upsert) instead of one write per subprocess result | fewer round trips, and a real bug fix — see below |
 | Nuclei is staged: `exposures,misconfig,default-login,takeover` by default, `+cve,vuln` only with `--deep` | avoids the most expensive template categories unless asked for |
 
-## A real bug that got fixed, not just papered over
-
-v1's `assets` table only ever stored the **current** state of each asset
-(`UNIQUE(org, table_name, asset_key)`), with `run_id` meaning "the last run
-that touched this row." Once an asset had been touched more than twice,
-`diff_since_last()` could no longer reliably reconstruct what "the previous
-run" actually looked like — it was, in some cases, comparing the current
-snapshot against itself.
-
-v2 adds an **append-only `history` table**: one immutable row per
-`(asset, run)`, which is what diffing is now computed from. `assets` remains
-as a fast current-state table for direct queries. `tests/test_db.py`
-includes a regression test (`test_diff_correct_across_three_runs`) that
-exercises exactly the case that broke in v1.
-
-The other technically-incorrect thing fixed: v1's `trufflehog_scan_url()`
-called `trufflehog filesystem <url>` — which scans a **local path**, not a
-remote URL, and would silently no-op against every JS file. v2's
-`tools.analyze_js_url()` fetches the JS body once, then runs a built-in
-regex secret scanner (AWS keys, Google API keys, JWTs, private key blocks,
-Slack tokens, generic bearer tokens) against the downloaded content, and
-optionally also feeds that same content to `trufflehog filesystem` against
-a temp file if it's installed — which is the workflow trufflehog actually
-supports.
 
 ## Install
 
