@@ -1,0 +1,5 @@
+PyYAML>=6.0
+
+# Optional — nicer terminal output (bold/dim/colored lines). recon.py falls
+# back to plain print() automatically if this isn't installed.
+rich>=13.0

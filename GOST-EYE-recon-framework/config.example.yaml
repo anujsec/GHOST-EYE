@@ -1,0 +1,69 @@
+# Nothing here is required for normal use — `python recon.py example.com` works
+# with zero config. This file only exists to override defaults (wordlists for
+# brute force / content discovery, a validated resolver list, notification
+# webhooks, or concurrency tuning).
+#
+# Copy to config.yaml if you want to override anything:
+#   cp config.example.yaml config.yaml
+
+mode: fast
+
+concurrency:
+  discovery_workers: 5     # crt.sh / subfinder / amass / gau / waybackurls in-flight at once
+  dns_workers: 20           # informs dnsx batch timeout sizing
+  js_workers: 10            # parallel JS fetch+analyze workers
+  content_workers: 5        # parallel feroxbuster workers (deep mode only)
+
+discovery:
+  passive: true
+  expensive_pivots: false          # ASN + amass org intel — slow, off unless --deep
+  brute_force: false               # puredns bruteforce — needs wordlists.subdomains + resolvers.validated
+  permutations: false              # alterx — needs resolvers.validated
+  recursive_permutations: false    # one extra alterx pass on resolved permutations
+
+httpx:
+  mode: fast    # fast: status/title/tech/server/length/redirect. deep: + cdn/cname/hash/favicon/tls
+
+url_discovery:
+  katana_depth_fast: 1
+  katana_depth_deep: 3
+  js_cap_fast: 150      # max JS files analyzed per run in fast mode
+  js_cap_deep: 1000
+
+content_discovery:
+  enabled: false     # feroxbuster — off by default, on with --deep, bounded to max_hosts
+  max_hosts: 10
+  timeout: 300
+
+screenshots:
+  enabled: false     # gowitness — off by default, on with --screenshots, runs async/non-blocking
+  max_hosts: 20
+
+nuclei:
+  enabled: true
+  rate_limit: 50      # respect target rules of engagement — don't raise this blindly
+  concurrency: 25
+  timeout: 1800
+
+cache:
+  enabled: true
+  dns_ttl: 3600            # 1h  — dnsx results
+  passive_ttl: 21600       # 6h  — crt.sh results
+  url_history_ttl: 86400   # 24h — gau/waybackurls results
+
+wordlists:
+  subdomains: null   # e.g. /opt/wordlists/n0kovo_subdomains.txt — required for --bruteforce/--deep
+  content: null       # e.g. /opt/wordlists/raft-medium-directories.txt — required for content_discovery
+
+resolvers:
+  validated: null    # output of dnsvalidator — required for brute_force/permutations
+
+notifications:
+  slack_webhook: ""      # https://hooks.slack.com/services/...
+  discord_webhook: ""    # https://discord.com/api/webhooks/...
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+
+# API keys for subfinder/amass are picked up from their own config files
+# (~/.config/subfinder/provider-config.yaml, ~/.config/amass/config.ini),
+# not duplicated here — more keys there = dramatically better passive coverage.
