@@ -16,7 +16,7 @@ Give it a domain, and it automatically performs subdomain discovery, HTTP probin
 
 ### 1. Clone the project
 
-# 1. clone the repo ```
+# 1. clone the repo 
 git clone https://github.com/anujsec/GHOST-EYE.git
 cd GHOST-EYE
 cd GHOST-EYE-recon
