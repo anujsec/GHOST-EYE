@@ -1,4 +1,5 @@
-<img width="1157" height="260" alt="Screenshot 2026-09-19 164623" src="https://github.com/user-attachments/assets/fb4ae81c-ece2-45ad-b82e-5a6338a18c46" />
+<img width="1157" height="251" alt="Screenshot 2026-09-19 164623" src="https://github.com/user-attachments/assets/45de1962-3eeb-4a8b-89c4-d6bd4601a392" />
+
 # Recon Framework v2
 
 A fast and automated reconnaissance tool for authorized security testing.
