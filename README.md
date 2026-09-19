@@ -16,20 +16,23 @@ Give it a domain, and it automatically performs subdomain discovery, HTTP probin
 
 ### 1. Clone the project
 
-```
+# 1. clone the repo ```
 git clone https://github.com/anujsec/GHOST-EYE.git
 cd GHOST-EYE
 cd GHOST-EYE-recon
-python recon.py example.com
+# 2. Create virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate        # Linux / Mac
+venv\Scripts\activate     
 ```
 
-### 2. Install Python dependencies
+### 3. Install Python dependencies
 
 ```
 pip install -r requirements.txt
 ```
 
-### 3. Install the required recon tools
+### 4. Install the required recon tools
 
 The framework uses several popular security tools:
 
