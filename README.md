@@ -1,42 +1,68 @@
 <img width="1157" height="251" alt="Screenshot 2026-09-19 164623" src="https://github.com/user-attachments/assets/45de1962-3eeb-4a8b-89c4-d6bd4601a392" />
 
 
-
 # Recon Framework v2
 
-A fast and automated reconnaissance tool for authorized security testing.
+A fast, automated reconnaissance tool for authorized security testing.
 
 Give it a domain, and it automatically performs subdomain discovery, HTTP probing, URL collection, crawling, JavaScript analysis, and security scanning.
 
-> ⚠️ **Use only on targets you are authorized to test**, such as your own systems or programs where you have permission.
+> ⚠️ **Use only on targets you are authorized to test** — your own systems, or programs where you have explicit permission.
 
 ---
 
-## 🚀 Quick Start
+## Table of Contents
 
-### 1. Clone the project
+- [Requirements](#-requirements)
+- [Installation](#-installation)
+- [Usage](#️-usage)
+- [Scan Modes](#-scan-modes)
+- [Output](#-output)
+- [What's New in v2](#-whats-new-in-v2)
+- [API Keys](#-api-keys)
+- [Testing](#-testing)
+- [Responsible Use](#️-responsible-use)
+- [Roadmap](#-roadmap)
+- [License](#-license)
 
-# 1. clone the repo 
+---
+
+## 📋 Requirements
+
+- Linux / Kali Linux (Kali recommended — most tools install easily there)
+- Python 3
+- Go
+- Git
+- Internet connection
+
+---
+
+## 📦 Installation
+
+### 1. Clone the repository
+
+```bash
 git clone https://github.com/anujsec/GHOST-EYE.git
-cd GHOST-EYE
-cd GHOST-EYE-recon
-# 2. Create virtual environment (recommended)
+cd GHOST-EYE/GHOST-EYE-recon
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
 python3 -m venv venv
 source venv/bin/activate        # Linux / Mac
-venv\Scripts\activate     
+venv\Scripts\activate           # Windows
 ```
 
 ### 3. Install Python dependencies
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
 ### 4. Install the required recon tools
 
-The framework uses several popular security tools:
-
-```
+```bash
 go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
 go install github.com/projectdiscovery/httpx/cmd/httpx@latest
@@ -46,15 +72,15 @@ go install github.com/lc/gau/v2/cmd/gau@latest
 go install github.com/tomnomnom/waybackurls@latest
 ```
 
-Make sure Go tools are available:
+Make sure Go tools are on your `PATH`:
 
-```
+```bash
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-Check:
+Verify the install:
 
-```
+```bash
 subfinder -version
 httpx -version
 nuclei -version
@@ -62,77 +88,47 @@ nuclei -version
 
 ---
 
-## ▶️ Run the Tool
+## ▶️ Usage
 
 ### Basic scan
 
-```
+```bash
 python3 recon.py example.com
 ```
 
-That's it.
-
-The tool will automatically create a folder containing the results.
+That's it — results are saved automatically.
 
 ### Interactive mode
 
-You can also run:
+Run without arguments and you'll be prompted for a target:
 
-```
+```bash
 python3 recon.py
 ```
-
-It will ask you for the target.
 
 ---
 
 ## ⚡ Scan Modes
 
-### Fast mode
+| Mode | Command | Description |
+|---|---|---|
+| Fast (default) | `python3 recon.py example.com` | Recommended for normal use |
+| Deep | `python3 recon.py example.com --deep` | Runs additional, more expensive recon |
+| DNS brute force | `python3 recon.py example.com --bruteforce` | Adds brute-force subdomain discovery |
+| Screenshots | `python3 recon.py example.com --screenshots` | Captures screenshots of live hosts |
+| No Nuclei | `python3 recon.py example.com --no-nuclei` | Skips vulnerability scanning |
 
-Recommended for normal use:
+Flags can be combined:
 
-```
-python3 recon.py example.com
-```
-
-### Deep mode
-
-Runs additional and more expensive reconnaissance:
-
-```
-python3 recon.py example.com --deep
-```
-
-### DNS brute force
-
-```
-python3 recon.py example.com --bruteforce
-```
-
-### Take screenshots
-
-```
-python3 recon.py example.com --screenshots
-```
-
-### Disable Nuclei
-
-```
-python3 recon.py example.com --no-nuclei
-```
-
-You can combine options:
-
-```
+```bash
 python3 recon.py example.com --deep --screenshots
 ```
 
 ---
 
-## 📂 Where Are the Results?
+## 📂 Output
 
-Results are saved automatically inside:
+Results are saved under `runs/`, organized by target and timestamp:
 
 ```
 runs/
@@ -147,80 +143,31 @@ runs/
         └── nuclei.jsonl
 ```
 
-Screenshots are saved inside:
-
-```
-screenshots/
-```
-
-when `--screenshots` is enabled.
+If `--screenshots` is enabled, images are saved to `screenshots/`.
 
 ---
 
-## 🔄 What's Special About v2?
+## 🔄 What's New in v2
 
-The tool is designed to avoid doing unnecessary work every time you run it.
-
-### ⚡ Faster
-
-Multiple reconnaissance tasks can run at the same time.
-
-### 🔎 Prioritized targets
-
-Interesting hosts such as:
-
-```
-api.example.com
-admin.example.com
-staging.example.com
-```
-
-can receive higher priority.
-
-### 🧠 Remembers previous scans
-
-The tool stores scan history in SQLite and can identify new or changed assets between runs.
-
-### 📊 Organized results
-
-Each scan gets its own timestamped folder.
-
-### 🛠️ Missing tools don't necessarily break the scan
-
-If an optional tool isn't installed, the framework can skip it and continue with the available tools.
+- **Faster** — multiple reconnaissance tasks run concurrently
+- **Prioritized targets** — interesting hosts (e.g. `api.`, `admin.`, `staging.` subdomains) are flagged for higher priority
+- **Scan memory** — scan history is stored in SQLite so the tool can identify new or changed assets between runs
+- **Organized results** — each scan gets its own timestamped folder
+- **Graceful degradation** — if an optional tool isn't installed, the framework skips it and continues with what's available
 
 ---
 
 ## 🔐 API Keys
 
-Basic reconnaissance works without API keys.
-
-Some services can provide additional passive results when their API keys are configured.
-
-These are optional.
+Basic reconnaissance works without any API keys. Configuring API keys for supported services is optional and unlocks additional passive results.
 
 ---
 
-## 🧪 Run Tests
+## 🧪 Testing
 
-To test the framework:
-
-```
+```bash
 python3 -m unittest discover -s tests -v
 ```
-
----
-
-## 📋 Requirements
-
-- Linux / Kali Linux
-- Python 3
-- Go
-- Git
-- Internet connection
-- Recon tools listed above
-
-Kali Linux is recommended because many security tools are easier to install there.
 
 ---
 
@@ -228,20 +175,16 @@ Kali Linux is recommended because many security tools are easier to install ther
 
 This project is intended for:
 
-- Bug bounty programs where testing is allowed
+- Bug bounty programs where testing is permitted
 - Your own infrastructure
 - Security labs
 - Systems where you have written authorization
 
-Do not scan systems without permission.
-
-Always follow the target's scope and rate limits.
+**Do not scan systems without permission.** Always follow the target's scope and rate limits.
 
 ---
 
-## ⭐ Future Improvements
-
-Planned improvements may include:
+## ⭐ Roadmap
 
 - Better result visualization
 - More reconnaissance sources
