@@ -1,5 +1,7 @@
 <img width="1157" height="251" alt="Screenshot 2026-09-19 164623" src="https://github.com/user-attachments/assets/45de1962-3eeb-4a8b-89c4-d6bd4601a392" />
 
+
+
 # Recon Framework v2
 
 A fast and automated reconnaissance tool for authorized security testing.
@@ -14,16 +16,16 @@ Give it a domain, and it automatically performs subdomain discovery, HTTP probin
 
 ### 1. Clone the project
 
-```bash
-git clone https://github.com/anujsec/GOST-EYE.git
-cd GOST-EYE
-cd GOST-EYE-recon-framework
+```
+git clone https://github.com/anujsec/GHOST-EYE.git
+cd GHOST-EYE
+cd GHOST-EYE-recon
 python recon.py example.com
 ```
 
 ### 2. Install Python dependencies
 
-```bash
+```
 pip install -r requirements.txt
 ```
 
@@ -31,7 +33,7 @@ pip install -r requirements.txt
 
 The framework uses several popular security tools:
 
-```bash
+```
 go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
 go install github.com/projectdiscovery/httpx/cmd/httpx@latest
@@ -43,13 +45,13 @@ go install github.com/tomnomnom/waybackurls@latest
 
 Make sure Go tools are available:
 
-```bash
+```
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
 Check:
 
-```bash
+```
 subfinder -version
 httpx -version
 nuclei -version
@@ -61,7 +63,7 @@ nuclei -version
 
 ### Basic scan
 
-```bash
+```
 python3 recon.py example.com
 ```
 
@@ -73,7 +75,7 @@ The tool will automatically create a folder containing the results.
 
 You can also run:
 
-```bash
+```
 python3 recon.py
 ```
 
@@ -87,7 +89,7 @@ It will ask you for the target.
 
 Recommended for normal use:
 
-```bash
+```
 python3 recon.py example.com
 ```
 
@@ -95,31 +97,31 @@ python3 recon.py example.com
 
 Runs additional and more expensive reconnaissance:
 
-```bash
+```
 python3 recon.py example.com --deep
 ```
 
 ### DNS brute force
 
-```bash
+```
 python3 recon.py example.com --bruteforce
 ```
 
 ### Take screenshots
 
-```bash
+```
 python3 recon.py example.com --screenshots
 ```
 
 ### Disable Nuclei
 
-```bash
+```
 python3 recon.py example.com --no-nuclei
 ```
 
 You can combine options:
 
-```bash
+```
 python3 recon.py example.com --deep --screenshots
 ```
 
@@ -129,7 +131,7 @@ python3 recon.py example.com --deep --screenshots
 
 Results are saved automatically inside:
 
-```text
+```
 runs/
 └── Example/
     └── 20260917T090623/
@@ -144,7 +146,7 @@ runs/
 
 Screenshots are saved inside:
 
-```text
+```
 screenshots/
 ```
 
@@ -164,7 +166,7 @@ Multiple reconnaissance tasks can run at the same time.
 
 Interesting hosts such as:
 
-```text
+```
 api.example.com
 admin.example.com
 staging.example.com
@@ -200,7 +202,7 @@ These are optional.
 
 To test the framework:
 
-```bash
+```
 python3 -m unittest discover -s tests -v
 ```
 
@@ -208,12 +210,12 @@ python3 -m unittest discover -s tests -v
 
 ## 📋 Requirements
 
-* Linux / Kali Linux
-* Python 3
-* Go
-* Git
-* Internet connection
-* Recon tools listed above
+- Linux / Kali Linux
+- Python 3
+- Go
+- Git
+- Internet connection
+- Recon tools listed above
 
 Kali Linux is recommended because many security tools are easier to install there.
 
@@ -223,10 +225,10 @@ Kali Linux is recommended because many security tools are easier to install ther
 
 This project is intended for:
 
-* Bug bounty programs where testing is allowed
-* Your own infrastructure
-* Security labs
-* Systems where you have written authorization
+- Bug bounty programs where testing is allowed
+- Your own infrastructure
+- Security labs
+- Systems where you have written authorization
 
 Do not scan systems without permission.
 
@@ -238,12 +240,14 @@ Always follow the target's scope and rate limits.
 
 Planned improvements may include:
 
-* Better result visualization
-* More reconnaissance sources
-* Improved change detection
-* More integrations
-* Better reporting
+- Better result visualization
+- More reconnaissance sources
+- Improved change detection
+- More integrations
+- Better reporting
 
 ---
 
 ## 📜 License
+
+MIT License — see [LICENSE](LICENSE) for details.
