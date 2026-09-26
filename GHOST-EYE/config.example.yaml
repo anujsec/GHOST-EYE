@@ -9,10 +9,12 @@
 mode: fast
 
 concurrency:
-  discovery_workers: 5     # crt.sh / subfinder / amass / gau / waybackurls in-flight at once
+  discovery_workers: 5      # crt.sh / subfinder / amass / gau / waybackurls in-flight at once
   dns_workers: 20           # informs dnsx batch timeout sizing
+  http_workers: 20          # parallel httpx probing
   js_workers: 10            # parallel JS fetch+analyze workers
-  content_workers: 5        # parallel feroxbuster workers (deep mode only)
+  content_workers: 5        # parallel ffuf/feroxbuster workers (deep mode only)
+  port_workers: 5           # parallel naabu port scanning (deep mode only)
 
 discovery:
   passive: true
@@ -31,9 +33,16 @@ url_discovery:
   js_cap_deep: 1000
 
 content_discovery:
-  enabled: false     # feroxbuster — off by default, on with --deep, bounded to max_hosts
+  enabled: false     # ffuf/feroxbuster — off by default, on with --deep, bounded to max_hosts
   max_hosts: 10
   timeout: 300
+  tool: ffuf         # ffuf (faster) or feroxbuster (more options)
+
+port_discovery:
+  enabled: false     # naabu port scanning — off by default, on with --deep
+  max_hosts: 50      # limit concurrent targets
+  timeout: 600
+  service_detection: false  # nmap service detection (very slow, only with --deep --service-detect)
 
 screenshots:
   enabled: false     # gowitness — off by default, on with --screenshots, runs async/non-blocking

@@ -110,11 +110,13 @@ def run_parallel(tasks: dict, max_workers: int = 8, per_task_timeout: int | None
             pending = [n for f, n in future_to_name.items() if n not in results]
             log.warning("batch budget of %ss exhausted — %d task(s) did not finish: %s",
                         budget, len(pending), ", ".join(pending[:5]))
+            for name in pending:
+                results[name] = TaskResult(name, error="timeout", duration=time.monotonic() - start_times[name])
 
         elapsed = time.monotonic() - submitted_at
         for name in tasks:
             if name not in results:
-                results[name] = TaskResult(name, error="timed out or cancelled", duration=elapsed)
+                results[name] = TaskResult(name, error="timeout" if per_task_timeout else "timed out or cancelled", duration=elapsed)
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
 

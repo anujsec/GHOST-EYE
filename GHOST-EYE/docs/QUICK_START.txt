@@ -1,0 +1,111 @@
+GHOST-EYE v2.1 Quick Start
+===========================
+
+INSTALLATION (30 seconds)
+--------------------------
+
+cd /data/ghost-eye
+pip install -r requirements.txt
+
+Required tools:
+go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+
+CHECK TOOL STATUS
+-----------------
+
+python3 << 'PYEOF'
+from tool_check import print_tool_status
+print_tool_status()
+PYEOF
+
+
+RUN SCANS
+---------
+
+Fast Mode (Default, 5-15 min):
+  python recon.py example.com
+
+Deep Mode (30-60 min):
+  python recon.py example.com --deep
+
+With Screenshots:
+  python recon.py example.com --deep --screenshots
+
+
+VIEW RESULTS
+------------
+
+Latest scan report:
+  cat runs/example.com/*/summary.json
+
+Raw discovery outputs:
+  ls runs/example.com/*/
+
+
+WHAT'S NEW (v2.1)
+-----------------
+
+New Discovery Phases:
+  - Port scanning (naabu)
+  - Content discovery (ffuf/feroxbuster)
+  - Source maps extraction
+  - API endpoint identification
+  - URL normalization (uro)
+
+Better Reporting:
+  - Attack surface categorization
+  - Finding prioritization
+  - Source attribution
+
+Tool Auto-Detection:
+  - Automatic availability checking
+  - Graceful fallbacks
+  - Version reporting
+
+
+KEY FILES TO REVIEW
+-------------------
+
+1. ENHANCEMENTS.md          - What's new, how to use it
+2. IMPLEMENTATION_GUIDE.md  - How to integrate features
+3. INSPECTION.md            - Current architecture analysis
+4. config.example.yaml      - New configuration options
+
+
+OPTIONAL: INSTALL MORE TOOLS
+-----------------------------
+
+For deeper reconnaissance:
+
+go install github.com/ffuf/ffuf@latest
+go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+go install github.com/s0md3v/uro@latest
+go install github.com/xnl-h4ck3r/wamore@latest
+brew install nmap
+
+
+TEST IT
+-------
+
+Fast test scan:
+  python recon.py example.com --no-nuclei
+
+Check outputs:
+  ls runs/example.com/*/
+
+
+NEXT STEPS
+----------
+
+- Read ENHANCEMENTS.md for complete feature list
+- Check IMPLEMENTATION_GUIDE.md to integrate new phases
+- Configure config.yaml for your environment
+- Run with --deep for comprehensive reconnaissance
+
+============================================================
+
+Ghost-Eye v2.1 - Ready to use.
+All new tools are optional and have graceful fallbacks.

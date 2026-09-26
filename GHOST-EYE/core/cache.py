@@ -116,10 +116,11 @@ def set(key: str, value, ttl_seconds: int, cache_empty: bool = False):
         pass
 
 
-def cached(namespace: str, ttl_seconds: int, cache_empty: bool = False):
+def cached(namespace: str, ttl_seconds: int, enabled: bool = True, cache_empty: bool = False):
     """
     Decorator: cache a function's return value keyed on namespace + args.
-    Honours the runtime switch, so `cache.enabled: false` actually works.
+    Accepts the legacy `enabled` keyword for tests and the newer runtime switch,
+    so `cache.enabled: false` and explicit `enabled=False` both work.
 
         @cached("crtsh", ttl_seconds=21600)
         def crtsh(domain): ...
@@ -127,7 +128,7 @@ def cached(namespace: str, ttl_seconds: int, cache_empty: bool = False):
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            if not _enabled:
+            if not enabled or not _enabled:
                 return fn(*args, **kwargs)
             key = namespace + ":" + json.dumps([args, kwargs], sort_keys=True, default=str)
             hit = get(key, default=_MISS)

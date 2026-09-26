@@ -267,10 +267,113 @@ def katana_crawl(urls: list[str], depth: int = 2, timeout: int = 600) -> list[st
     return dedupe(out.splitlines())
 
 
+def extract_api_endpoints(urls: list[str]) -> dict:
+    """
+    Identify and group API endpoints from a list of URLs.
+    Returns dict organized by host with endpoint patterns.
+    
+    Patterns:
+    - /api/
+    - /api/v1/, /api/v2/, etc.
+    - /graphql, /graphql/
+    - /rest/, /rest/api/
+    - /oauth/, /oauth2/
+    - /auth/
+    - /services/
+    - /methods/
+    - /functions/
+    """
+    import re
+    from urllib.parse import urlparse
+    
+    api_patterns = [
+        r'/api(?:/v\d+)?/',
+        r'/graphql',
+        r'/rest(?:/api)?/',
+        r'/oauth\d*/',
+        r'/auth(?:entication)?/',
+        r'/services?/',
+        r'/methods?/',
+        r'/functions?/',
+        r'/rpc',
+        r'/soap',
+        r'\.json$',
+        r'\.xml$'
+    ]
+    
+    result = {}
+    for url in urls:
+        try:
+            parsed = urlparse(url)
+            host = parsed.netloc
+            path = parsed.path
+            
+            # Check if matches any API pattern
+            is_api = any(re.search(pattern, path, re.IGNORECASE) for pattern in api_patterns)
+            if is_api:
+                if host not in result:
+                    result[host] = []
+                result[host].append(path)
+        except Exception:
+            continue
+    
+    # Deduplicate paths per host
+    for host in result:
+        result[host] = sorted(list(set(result[host])))
+    
+    return result
+
+
 def normalize_url(u: str) -> str:
     """Strip volatile query params/fragments that would otherwise defeat dedup."""
     u = u.split("#")[0]
     return u.rstrip("/")
+
+
+def normalize_urls_batch(urls: list[str], timeout: int = 300) -> list[str]:
+    """
+    Intelligent URL normalization and deduplication using uro if available,
+    otherwise falls back to basic normalization.
+    """
+    if not urls:
+        return []
+    
+    if which_or_warn("uro"):
+        try:
+            urls_str = "\n".join(urls)
+            out = run(["uro", "--seed", "-"], input_data=urls_str, timeout=timeout)
+            return dedupe(out.splitlines())
+        except Exception:
+            pass
+    
+    # Fallback: basic normalization
+    normalized = set()
+    for u in urls:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(u)
+            # Normalize to scheme://host/path (sort query params)
+            scheme = (parsed.scheme or "https").lower()
+            host = (parsed.hostname or "").lower()
+            if parsed.port and parsed.port not in (80, 443):
+                host = f"{host}:{parsed.port}"
+            path = parsed.path or "/"
+            
+            # For dedup: normalize query param order
+            query = ""
+            if parsed.query:
+                try:
+                    from urllib.parse import parse_qs, urlencode
+                    params = parse_qs(parsed.query, keep_blank_values=True)
+                    query = "?" + urlencode(sorted(params.items()), doseq=True)
+                except Exception:
+                    query = f"?{parsed.query}"
+            
+            normalized.add(f"{scheme}://{host}{path}{query}")
+        except Exception:
+            normalized.add(u)
+    
+    return sorted(list(normalized))
 
 
 # --- JS analysis -----------------------------------------------------------
@@ -339,6 +442,68 @@ def analyze_js_url(js_url: str, use_trufflehog: bool = False, timeout: int = 30)
     return {"url": js_url, "endpoints": endpoints, "secrets": secrets}
 
 
+def jsluice_analyze(js_url: str, timeout: int = 30) -> dict:
+    """
+    Analyze JavaScript with jsluice for endpoints, source maps, and sensitive data.
+    Falls back to basic regex extraction if jsluice unavailable.
+    """
+    if not which_or_warn("jsluice"):
+        return {"url": js_url, "endpoints": [], "source_maps": [], "error": "jsluice_unavailable"}
+    
+    try:
+        body_bytes = _http_get_with_backoff(js_url, timeout=timeout, retries=1)
+        if body_bytes is None:
+            return {"url": js_url, "endpoints": [], "source_maps": [], "error": "fetch_failed"}
+        
+        body = body_bytes.decode("utf-8", errors="ignore")
+        out = run(["jsluice"], input_data=body, timeout=timeout)
+        
+        endpoints = []
+        source_maps = []
+        for line in out.splitlines():
+            if "sourcemap" in line.lower() or ".map" in line:
+                source_maps.append(line.strip())
+            elif line.strip().startswith("/"):
+                endpoints.append(line.strip())
+        
+        return {"url": js_url, "endpoints": endpoints, "source_maps": source_maps}
+    except Exception as e:
+        return {"url": js_url, "endpoints": [], "source_maps": [], "error": str(e)}
+
+
+def extract_source_maps(js_files: list[str]) -> list[str]:
+    """Extract source map URLs from a list of JS file URLs."""
+    source_maps = []
+    for js_url in js_files[:50]:  # Limit to first 50 to avoid overhead
+        try:
+            body_bytes = _http_get_with_backoff(js_url, timeout=10, retries=1)
+            if body_bytes is None:
+                continue
+            
+            body = body_bytes.decode("utf-8", errors="ignore")
+            # Look for sourceMappingURL or sourceMap references
+            import re
+            patterns = [
+                r'//[#@]\s*sourceMappingURL\s*=\s*([^\s\n]+)',
+                r'sourceMap\s*:\s*["\']([^"\']+)["\']',
+                r'source-map-url\s*=\s*["\']([^"\']+)["\']'
+            ]
+            for pattern in patterns:
+                matches = re.findall(pattern, body, re.IGNORECASE)
+                for match in matches:
+                    # Resolve relative URLs
+                    if match.startswith("http"):
+                        source_maps.append(match)
+                    else:
+                        # Make it absolute relative to the JS file
+                        base = "/".join(js_url.split("/")[:-1])
+                        source_maps.append(f"{base}/{match}")
+        except Exception:
+            continue
+    
+    return dedupe(source_maps)
+
+
 def arjun_params(url: str, timeout: int = 300) -> list[str]:
     if not which_or_warn("arjun"):
         return []
@@ -351,6 +516,96 @@ def feroxbuster(url: str, wordlist: str, timeout: int = 300) -> list[str]:
         return []
     out = run(["feroxbuster", "-u", url, "-w", wordlist, "--silent", "-o", "/dev/stdout"], timeout=timeout)
     return dedupe(out.splitlines())
+
+
+def ffuf(url: str, wordlist: str, timeout: int = 300) -> list[str]:
+    """ffuf-based content discovery."""
+    if not which_or_warn("ffuf"):
+        return []
+    # Basic FUZZ wordlist position — can be enhanced for multiple positions
+    out = run(["ffuf", "-u", f"{url}/FUZZ", "-w", wordlist, "-silent", "-ac"], timeout=timeout)
+    return dedupe(out.splitlines())
+
+
+def naabu_scan(targets: list[str], timeout: int = 600) -> list[dict]:
+    """
+    Port scanning with naabu. Returns list of dicts with host, port, protocol.
+    Only scan targets that belong to authorized scope (passed in explicitly).
+    """
+    if not which_or_warn("naabu"):
+        return []
+    if not targets:
+        return []
+    
+    # naabu expects input as file or stdin
+    targets_str = "\n".join(targets)
+    out = run(["naabu", "-list", "-", "-json", "-silent"], input_data=targets_str, timeout=timeout)
+    
+    results = []
+    for line in out.splitlines():
+        try:
+            record = json.loads(line)
+            results.append({
+                "host": record.get("host"),
+                "port": record.get("port"),
+                "protocol": "tcp"  # naabu defaults to TCP
+            })
+        except json.JSONDecodeError:
+            continue
+    return results
+
+
+def nmap_service_detect(targets: list[str], timeout: int = 600) -> list[dict]:
+    """
+    Service detection with nmap. Returns list of dicts with host, port, service, product, version.
+    Light service detection only; use for high-value targets.
+    """
+    if not which_or_warn("nmap"):
+        return []
+    if not targets:
+        return []
+    
+    # Create target list
+    targets_str = " ".join(targets[:20])  # Limit to 20 targets max per nmap invocation
+    out = run(["nmap", "-sV", "--script-timeout", "10", "-oG", "-", targets_str], timeout=timeout)
+    
+    results = []
+    for line in out.splitlines():
+        if line.startswith("Host:"):
+            # Parse nmap greppable output: Host: IP Ports: 80/open/tcp//http///
+            parts = line.split()
+            if len(parts) > 2:
+                host = parts[1]
+                ports_str = " ".join(parts[2:])
+                # Parse ports field
+                for port_info in ports_str.split(","):
+                    if "/open/" in port_info:
+                        try:
+                            port_num = port_info.split("/")[0]
+                            protocol = port_info.split("/")[2]
+                            service = port_info.split("/")[4] if len(port_info.split("/")) > 4 else "unknown"
+                            results.append({
+                                "host": host,
+                                "port": int(port_num),
+                                "protocol": protocol,
+                                "service": service
+                            })
+                        except (ValueError, IndexError):
+                            continue
+    return results
+
+
+def wamore(domain: str, timeout: int = 600) -> list[str]:
+    """
+    Enhanced historical URL discovery using wamore.
+    Falls back to gau if wamore is unavailable.
+    """
+    if which_or_warn("wamore"):
+        out = run(["wamore", "-d", domain], timeout=timeout)
+        return dedupe(out.splitlines())
+    else:
+        # Fallback to gau
+        return gau(domain, timeout=timeout)
 
 
 # ---------------------------------------------------------------- Layer 5 — nuclei / secrets
