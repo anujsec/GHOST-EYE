@@ -43,7 +43,7 @@ Give it a domain, and it automatically performs subdomain discovery, HTTP probin
 
 ```bash
 git clone https://github.com/anujsec/GHOST-EYE.git
-cd GHOST-EYE/GHOST-EYE-recon
+cd GHOST-EYE/GHOST-EYE
 ```
 
 ### 2. Create a virtual environment (recommended)
