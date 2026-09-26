@@ -1,10 +1,28 @@
 import unittest
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import tools
+
+
+class TestRun(unittest.TestCase):
+    def test_invalid_output_bytes_are_replaced(self):
+        output = tools.run([
+            sys.executable,
+            "-c",
+            "import os; os.write(1, b'valid\\x81tail')",
+        ])
+        self.assertEqual(output, "valid\ufffdtail")
+
+    def test_missing_stdout_returns_empty_string(self):
+        with patch("tools.subprocess.run", return_value=SimpleNamespace(
+            returncode=0, stderr="", stdout=None
+        )):
+            self.assertEqual(tools.run(["fake-tool"]), "")
 
 
 class TestExtractEndpoints(unittest.TestCase):

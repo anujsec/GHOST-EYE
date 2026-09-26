@@ -54,11 +54,13 @@ def run(cmd: list[str], timeout: int = 1800, input_data: str | None = None) -> s
             input=input_data,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         if proc.returncode != 0 and proc.stderr:
             log.debug("stderr from %s: %s", cmd[0], proc.stderr[:2000])
-        return proc.stdout
+        return proc.stdout or ""
     except FileNotFoundError:
         log.warning("binary not found: %s", cmd[0])
         return ""

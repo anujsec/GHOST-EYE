@@ -23,6 +23,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import db
 import notify
@@ -41,6 +42,7 @@ DEFAULTS = {
         "dns_workers": 50,        #increase from 20
         "js_workers": 20,         #increase from 10
         "content_workers": 5,
+        "port_workers": 5,
     },
     "discovery": {
         "passive": True,
@@ -51,13 +53,21 @@ DEFAULTS = {
     },
     "httpx": {"mode": "fast"},
     "url_discovery": {"katana_depth_fast": 1, "katana_depth_deep": 3,
-                       "js_cap_fast": 150, "js_cap_deep": 1000},
-    "content_discovery": {"enabled": False, "max_hosts": 10, "timeout": 300},
+                       "js_cap_fast": 150, "js_cap_deep": 1000,
+                       "historical_sources": ["gau", "waybackurls"],
+                       "normalize_with_uro": True},
+    "javascript": {"jsluice": False, "trufflehog": False, "source_maps": False},
+    "parameter_discovery": {"enabled": False, "max_urls": 10, "timeout": 300},
+    "content_discovery": {"enabled": False, "max_hosts": 10, "timeout": 300,
+                          "tool": "feroxbuster"},
+    "port_discovery": {"enabled": False, "max_hosts": 50, "timeout": 600,
+                       "service_detection": False},
     "screenshots": {"enabled": False, "max_hosts": 20},
     "nuclei": {"enabled": True, "rate_limit": 50, "concurrency": 25, "timeout": 1800},
     "cache": {"enabled": True, "dns_ttl": 3600, "passive_ttl": 21600, "url_history_ttl": 86400},
     "wordlists": {"subdomains": None, "content": None},
-    "resolvers": {"validated": None},
+    "resolvers": {"raw": None, "validated": None, "validate_on_run": False},
+    "local_scans": {"gitleaks_path": None, "s3_bucket_names_file": None},
     "notifications": {"slack_webhook": "", "discord_webhook": "", "telegram_bot_token": "", "telegram_chat_id": ""},
 }
 
@@ -135,6 +145,19 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
     if cache_enabled:
         cache_mod.purge_expired()
     conc = cfg["concurrency"]
+
+    resolver_cfg = cfg["resolvers"]
+    if resolver_cfg.get("validate_on_run"):
+        raw_resolvers = resolver_cfg.get("raw")
+        validated_resolvers = resolver_cfg.get("validated")
+        if raw_resolvers and validated_resolvers:
+            reporter.phase_start("resolver_validation")
+            t0 = time.monotonic()
+            tools.validate_resolvers(raw_resolvers, validated_resolvers)
+            timings["resolver_validation"] = time.monotonic() - t0
+            reporter.phase_done("resolver_validation", {}, timings["resolver_validation"])
+        else:
+            warnings.append("resolver validation requested but raw and validated paths are required")
 
     # --------------------------------------------------- Phase 1: seed expansion
     reporter.phase_start("seed_expansion")
@@ -339,36 +362,57 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
     # --------------------------------------------------- Phase 5: prioritization
     tiers = tier_hosts(live_urls, {u: probe_by_host.get(u, {}) for u in live_urls}, new_live_hosts)
 
+    # --------------------------------------------------- Optional port and service discovery
+    port_records = []
+    service_records = []
+    port_cfg = cfg["port_discovery"]
+    if port_cfg["enabled"] or deep:
+        reporter.phase_start("port_discovery")
+        t0 = time.monotonic()
+        port_targets = dedupe_preserve([
+            host for url in tiers["tier1"] + tiers["tier2"]
+            if (host := urlsplit(url).hostname)
+        ])[:port_cfg["max_hosts"]]
+        if port_targets:
+            port_records = tools.naabu_scan(port_targets, timeout=port_cfg["timeout"])
+            if port_cfg["service_detection"] and port_records:
+                service_targets = dedupe_preserve(
+                    str(record["host"]) for record in port_records if record.get("host")
+                )
+                service_records = tools.nmap_service_detect(service_targets, timeout=port_cfg["timeout"])
+        tools.save_raw(rd, "ports.jsonl", _jsonl(port_records))
+        if port_cfg["service_detection"]:
+            tools.save_raw(rd, "services.jsonl", _jsonl(service_records))
+        timings["port_discovery"] = time.monotonic() - t0
+        reporter.phase_done("port_discovery", {"open_ports": len(port_records),
+                                                  "services": len(service_records)},
+                            timings["port_discovery"])
+
     # --------------------------------------------------- Phase 6: URL discovery
     reporter.phase_start("url_discovery")
     t0 = time.monotonic()
 
     url_ttl = cfg["cache"]["url_history_ttl"]
 
-    def cached_gau(d):
-        key = f"gau:{d}"
-        hit = cache_mod.get(key) if cache_enabled else None
-        if hit is not None:
-            return hit
-        val = tools.gau(d)
-        if cache_enabled:
-            cache_mod.set(key, val, url_ttl)
-        return val
-
-    def cached_wayback(d):
-        key = f"wayback:{d}"
-        hit = cache_mod.get(key) if cache_enabled else None
-        if hit is not None:
-            return hit
-        val = tools.waybackurls(d)
-        if cache_enabled:
-            cache_mod.set(key, val, url_ttl)
-        return val
-
+    history_tools = {"gau": tools.gau, "waybackurls": tools.waybackurls, "wamore": tools.wamore}
     history_tasks = {}
-    for d in seed_domains:
-        history_tasks[f"gau:{d}"] = lambda d=d: cached_gau(d)
-        history_tasks[f"wayback:{d}"] = lambda d=d: cached_wayback(d)
+    for source in cfg["url_discovery"]["historical_sources"]:
+        history_tool = history_tools.get(source)
+        if history_tool is None:
+            warnings.append(f"unknown URL history source '{source}' — skipped")
+            continue
+        for d in seed_domains:
+            def fetch_history(d=d, source=source, history_tool=history_tool):
+                key = f"{source}:{d}"
+                hit = cache_mod.get(key) if cache_enabled else None
+                if hit is not None:
+                    return hit
+                value = history_tool(d, timeout=300) if source == "wamore" else history_tool(d)
+                if cache_enabled:
+                    cache_mod.set(key, value, url_ttl)
+                return value
+
+            history_tasks[f"{source}:{d}"] = fetch_history
     history_results = run_parallel(history_tasks, max_workers=conc["discovery_workers"], per_task_timeout=300)
 
     historical_urls = set()
@@ -382,8 +426,15 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
     crawl_targets = tiers["tier1"] + tiers["tier2"] if not deep else tiers["tier1"] + tiers["tier2"] + tiers["tier3"]
     crawled = set(tools.katana_crawl(crawl_targets, depth=depth, timeout=600)) if crawl_targets else set()
 
-    all_urls = {tools.normalize_url(u) for u in (historical_urls | crawled)}
+    normalized_urls = {tools.normalize_url(u) for u in (historical_urls | crawled)}
+    if cfg["url_discovery"]["normalize_with_uro"]:
+        all_urls = set(tools.normalize_urls_batch(sorted(normalized_urls)))
+    else:
+        all_urls = normalized_urls
     tools.save_raw(rd, "urls.txt", "\n".join(sorted(all_urls)))
+
+    api_endpoints = tools.extract_api_endpoints(sorted(all_urls))
+    tools.save_raw(rd, "api_endpoints.json", _to_json(api_endpoints))
 
     timings["url_discovery"] = time.monotonic() - t0
     reporter.phase_done("url_discovery", {"historical": len(historical_urls), "crawled": len(crawled),
@@ -398,17 +449,33 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
     js_urls = sorted({u for u in all_urls if u.split("?")[0].endswith(".js")})[:js_cap]
 
     reporter.step(f"{len(js_urls)} js file(s) · {conc['js_workers']} workers")
-    js_results = map_parallel(tools.analyze_js_url, js_urls,
-                               max_workers=conc["js_workers"], per_item_timeout=45)
+    js_results = map_parallel(
+        lambda url: tools.analyze_js_url(url, use_trufflehog=cfg["javascript"]["trufflehog"]),
+        js_urls, max_workers=conc["js_workers"], per_item_timeout=45,
+    )
 
     endpoints = set()
     secrets_found = []
+    source_maps = set()
     for r in js_results:
         if not r.ok or not r.value:
             continue
         endpoints.update(r.value.get("endpoints", []))
         for s in r.value.get("secrets", []):
             secrets_found.append({**s, "url": r.value["url"]})
+
+    if cfg["javascript"]["jsluice"]:
+        jsluice_results = map_parallel(tools.jsluice_analyze, js_urls,
+                                        max_workers=conc["js_workers"], per_item_timeout=45)
+        for result in jsluice_results:
+            if result.ok and result.value:
+                endpoints.update(result.value.get("endpoints", []))
+                source_maps.update(result.value.get("source_maps", []))
+
+    if cfg["javascript"]["source_maps"]:
+        source_maps.update(tools.extract_source_maps(js_urls))
+    if source_maps:
+        tools.save_raw(rd, "source_maps.txt", "\n".join(sorted(source_maps)))
 
     if secrets_found:
         tools.save_raw(rd, "secrets.jsonl", _jsonl(secrets_found))
@@ -427,9 +494,15 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
         t_ferox = time.monotonic()
         wl = cfg["wordlists"].get("content")
         max_hosts = cfg["content_discovery"]["max_hosts"]
-        if wl:
+        content_tool = {
+            "ffuf": tools.ffuf,
+            "feroxbuster": tools.feroxbuster,
+        }.get(cfg["content_discovery"]["tool"])
+        if wl and content_tool:
             ferox_targets = tiers["tier1"][:max_hosts]
-            ferox_tasks = {f"ferox:{u}": lambda u=u: tools.feroxbuster(u, wl, timeout=cfg["content_discovery"]["timeout"])
+            tool_name = cfg["content_discovery"]["tool"]
+            ferox_tasks = {f"{tool_name}:{u}": lambda u=u: content_tool(
+                                u, wl, timeout=cfg["content_discovery"]["timeout"])
                             for u in ferox_targets}
             ferox_results = run_parallel(ferox_tasks, max_workers=conc["content_workers"],
                                           per_task_timeout=cfg["content_discovery"]["timeout"] + 30)
@@ -438,6 +511,8 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
                     ferox_hits.update(res.value or [])
                 else:
                     warnings.append(f"{name} failed")
+        elif not content_tool:
+            warnings.append(f"unknown content discovery tool '{cfg['content_discovery']['tool']}' — skipped")
         else:
             warnings.append("content discovery enabled but no wordlist configured — skipped")
         timings["content_discovery"] = time.monotonic() - t_ferox
@@ -449,6 +524,27 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
     timings["javascript"] = time.monotonic() - t0
     reporter.phase_done("javascript", {"js_files": len(js_urls), "endpoints": len(endpoints) + len(ferox_hits)},
                          timings["javascript"])
+
+    parameter_hits = set()
+    parameter_cfg = cfg["parameter_discovery"]
+    if parameter_cfg["enabled"]:
+        reporter.phase_start("parameter_discovery")
+        t0 = time.monotonic()
+        parameter_targets = dedupe_preserve(tiers["tier1"] + sorted(all_urls))[:parameter_cfg["max_urls"]]
+        parameter_results = map_parallel(
+            lambda url: tools.arjun_params(url, timeout=parameter_cfg["timeout"]),
+            parameter_targets, max_workers=conc["content_workers"],
+            per_item_timeout=parameter_cfg["timeout"],
+        )
+        for result in parameter_results:
+            if result.ok:
+                parameter_hits.update(result.value or [])
+            else:
+                warnings.append(f"arjun task failed: {result.error}")
+        tools.save_raw(rd, "parameters.txt", "\n".join(sorted(parameter_hits)))
+        timings["parameter_discovery"] = time.monotonic() - t0
+        reporter.phase_done("parameter_discovery", {"parameters": len(parameter_hits)},
+                            timings["parameter_discovery"])
 
     # --------------------------------------------------- Phase 9: nuclei (staged)
     findings = []
@@ -485,6 +581,28 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
         timings["nuclei"] = time.monotonic() - t0
         reporter.phase_done("nuclei", {"scanned": len(scan_targets), "findings": len(findings)}, timings["nuclei"])
 
+    local_scan_cfg = cfg["local_scans"]
+    local_scan_results = {"gitleaks": [], "s3": []}
+    if local_scan_cfg["gitleaks_path"] or local_scan_cfg["s3_bucket_names_file"]:
+        reporter.phase_start("local_scans")
+        t0 = time.monotonic()
+        if local_scan_cfg["gitleaks_path"]:
+            try:
+                local_scan_results["gitleaks"] = tools.gitleaks_scan(local_scan_cfg["gitleaks_path"])
+                tools.save_raw(rd, "gitleaks.jsonl", _jsonl(local_scan_results["gitleaks"]))
+            except Exception as e:
+                warnings.append(f"gitleaks scan failed: {e}")
+        if local_scan_cfg["s3_bucket_names_file"]:
+            try:
+                local_scan_results["s3"] = tools.s3scanner(local_scan_cfg["s3_bucket_names_file"])
+                tools.save_raw(rd, "s3_findings.jsonl", _jsonl(local_scan_results["s3"]))
+            except Exception as e:
+                warnings.append(f"s3scanner failed: {e}")
+        timings["local_scans"] = time.monotonic() - t0
+        reporter.phase_done("local_scans", {"gitleaks": len(local_scan_results["gitleaks"]),
+                                               "s3_findings": len(local_scan_results["s3"])},
+                            timings["local_scans"])
+
     # --------------------------------------------------- join background screenshots before finishing
     if screenshot_future is not None:
         reporter.info("waiting on background screenshots to finish...")
@@ -508,9 +626,16 @@ def run_pipeline(target: str, org: str | None, cfg: dict, base_dir: Path, report
             "subdomains": len(all_subs),
             "live_hosts": len(live_urls),
             "urls": len(all_urls),
+            "api_endpoints": sum(len(paths) for paths in api_endpoints.values()),
             "js_files": len(js_urls),
+            "source_maps": len(source_maps),
+            "parameters": len(parameter_hits),
             "endpoints": len(endpoints) + len(ferox_hits),
             "findings": len(findings),
+            "open_ports": len(port_records),
+            "services": len(service_records),
+            "gitleaks_findings": len(local_scan_results["gitleaks"]),
+            "s3_findings": len(local_scan_results["s3"]),
         },
         "changes": {
             "new_subdomains": len(sub_diff["new"]),

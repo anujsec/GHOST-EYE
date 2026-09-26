@@ -31,18 +31,34 @@ url_discovery:
   katana_depth_deep: 3
   js_cap_fast: 150      # max JS files analyzed per run in fast mode
   js_cap_deep: 1000
+  historical_sources: [gau, waybackurls]  # add wamore to include its archive results
+  normalize_with_uro: true                # uses uro when installed; otherwise basic normalization
+
+javascript:
+  jsluice: false       # additional JS analysis; requires jsluice
+  trufflehog: false    # run trufflehog on downloaded JS bundles
+  source_maps: false   # fetch JS bundles to discover source map URLs
+
+parameter_discovery:
+  enabled: false       # active parameter probing with Arjun
+  max_urls: 10
+  timeout: 300
 
 content_discovery:
   enabled: false     # ffuf/feroxbuster — off by default, on with --deep, bounded to max_hosts
   max_hosts: 10
   timeout: 300
-  tool: ffuf         # ffuf (faster) or feroxbuster (more options)
+  tool: feroxbuster  # ffuf (faster) or feroxbuster (more options)
 
 port_discovery:
   enabled: false     # naabu port scanning — off by default, on with --deep
   max_hosts: 50      # limit concurrent targets
   timeout: 600
   service_detection: false  # nmap service detection (very slow, only with --deep --service-detect)
+
+local_scans:
+  gitleaks_path: null          # optional local directory to scan for secrets
+  s3_bucket_names_file: null   # optional candidate-bucket list for s3scanner
 
 screenshots:
   enabled: false     # gowitness — off by default, on with --screenshots, runs async/non-blocking
@@ -65,7 +81,9 @@ wordlists:
   content: null       # e.g. /opt/wordlists/raft-medium-directories.txt — required for content_discovery
 
 resolvers:
+  raw: null         # optional raw list; set validate_on_run to run dnsvalidator
   validated: null    # output of dnsvalidator — required for brute_force/permutations
+  validate_on_run: false
 
 notifications:
   slack_webhook: ""      # https://hooks.slack.com/services/...

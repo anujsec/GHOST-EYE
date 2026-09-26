@@ -156,6 +156,12 @@ Resolver hygiene (run before using `--bruteforce`/`--deep`):
 dnsvalidator -tL resolvers_raw.txt -threads 50 -o resolvers.txt
 ```
 
+## Optional tool integrations
+
+The pipeline uses `uro` for batch URL normalization when installed and falls back to built-in normalization otherwise. Add `wamore` to `url_discovery.historical_sources` to include it alongside Gau and Wayback. JavaScript integrations (`javascript.jsluice`, `javascript.trufflehog`, and `javascript.source_maps`), Arjun (`parameter_discovery.enabled`), port scanning (`port_discovery.enabled`), Gitleaks (`local_scans.gitleaks_path`), S3Scanner (`local_scans.s3_bucket_names_file`), and resolver validation (`resolvers.raw`, `resolvers.validated`, and `resolvers.validate_on_run`) are opt-in. Content discovery supports `ffuf` or `feroxbuster` through `content_discovery.tool`; it requires `wordlists.content` and runs in deep mode when configured. Deep mode also enables bounded Naabu scans; Nmap service detection requires `port_discovery.service_detection: true`.
+
+These active checks can generate significant traffic. Only enable them for targets and local files you are authorized to assess. See `config.example.yaml` for the available limits and settings.
+
 ## Enabling notifications
 
 ```yaml

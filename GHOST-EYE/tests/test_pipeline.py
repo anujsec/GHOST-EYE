@@ -37,11 +37,23 @@ def _patch_all_tools():
         "gowitness_screenshot": lambda urls, out_dir, timeout=600: None,
         "gau": lambda domain: ["https://www.example.test/app.js"],
         "waybackurls": lambda domain: [],
+        "wamore": lambda domain, timeout=600: [],
         "katana_crawl": lambda urls, depth=1, timeout=600: [],
+        "normalize_urls_batch": lambda urls, timeout=300: urls,
+        "extract_api_endpoints": lambda urls: {},
         "analyze_js_url": lambda url, use_trufflehog=False, timeout=30: {
             "url": url, "endpoints": ["/api/v1/secret-endpoint"], "secrets": []
         },
+        "jsluice_analyze": lambda url, timeout=30: {"url": url, "endpoints": [], "source_maps": []},
+        "extract_source_maps": lambda urls: [],
+        "arjun_params": lambda url, timeout=300: [],
         "feroxbuster": lambda url, wl, timeout=300: [],
+        "ffuf": lambda url, wl, timeout=300: [],
+        "naabu_scan": lambda targets, timeout=600: [{"host": host, "port": 443} for host in targets],
+        "nmap_service_detect": lambda targets, timeout=600: [],
+        "gitleaks_scan": lambda path, timeout=300: [],
+        "s3scanner": lambda bucket_names_file, timeout=300: [],
+        "validate_resolvers": lambda input_file, output_file, timeout=300: None,
         "nuclei_scan": lambda hosts, tags, rate_limit=50, concurrency=25, timeout=1800: [],
     }
 
@@ -79,6 +91,34 @@ class TestPipelineSmoke(unittest.TestCase):
         self.assertIn("endpoints", summary["counts"])
         self.assertTrue(Path(summary["run_dir"]).exists())
         self.assertTrue((Path(summary["run_dir"]) / "summary.json").exists())
+        for name in ("naabu_scan", "arjun_params", "jsluice_analyze", "gitleaks_scan", "s3scanner"):
+            self._mocks[name].assert_not_called()
+
+    def test_configured_tools_run_in_pipeline(self):
+        cfg = pipeline.merge_defaults({
+            "url_discovery": {"historical_sources": ["gau", "waybackurls", "wamore"]},
+            "javascript": {"jsluice": True, "trufflehog": True, "source_maps": True},
+            "parameter_discovery": {"enabled": True, "max_urls": 2, "timeout": 10},
+            "content_discovery": {"enabled": True, "tool": "ffuf", "max_hosts": 1},
+            "port_discovery": {"enabled": True, "service_detection": True},
+            "wordlists": {"content": "/fake/content.txt"},
+            "resolvers": {"raw": "/fake/raw-resolvers.txt", "validated": "/fake/valid-resolvers.txt",
+                          "validate_on_run": True},
+            "local_scans": {"gitleaks_path": "/fake/repository",
+                            "s3_bucket_names_file": "/fake/buckets.txt"},
+        })
+
+        summary = pipeline.run_pipeline(
+            target="example.test", org="Example", cfg=cfg, base_dir=self._base_dir,
+            reporter=pipeline.Reporter(),
+        )
+
+        for name in ("wamore", "jsluice_analyze", "extract_source_maps", "arjun_params", "ffuf",
+                     "naabu_scan", "nmap_service_detect", "validate_resolvers", "gitleaks_scan", "s3scanner"):
+            self.assertTrue(self._mocks[name].called, name)
+        self._mocks["feroxbuster"].assert_not_called()
+        self.assertTrue((Path(summary["run_dir"]) / "api_endpoints.json").exists())
+        self.assertEqual(summary["counts"]["open_ports"], 2)
 
     def test_fast_mode_skips_brute_force(self):
         cfg = pipeline.merge_defaults({})
